@@ -13,6 +13,13 @@ and any previous iframe auto-resize scripts.
 })();
 </script>
 <style>
+/* Prevent sideways scrolling in a standalone Website_Embed.html preview. */
+html:has(#gsaa-chennai-mobile-shell),
+body:has(#gsaa-chennai-mobile-shell) {
+  max-width:100% !important;
+  overflow-x:clip !important;
+}
+body:has(#gsaa-chennai-mobile-shell) { margin-left:0; margin-right:0; }
 #gsaa-chennai-mobile-shell{
   display:block!important;position:relative!important;box-sizing:border-box!important;
   left:50%!important;transform:translateX(-50%)!important;
@@ -25,7 +32,7 @@ and any previous iframe auto-resize scripts.
   display:block!important;position:static!important;box-sizing:border-box!important;
   width:100%!important;max-width:100%!important;min-width:0!important;
   /* Start as ONE mobile viewport: until language selection is completed. */
-  height:100vh;height:100dvh;min-height:0!important;max-height:none!important;
+  height:100vh;height:100dvh;min-height:100vh!important;max-height:none!important;
   margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
   box-shadow:none!important;background:#fffbf3!important;
   transform:none!important;zoom:1!important;vertical-align:top!important;
@@ -41,7 +48,7 @@ and any previous iframe auto-resize scripts.
     width="100%"
     scrolling="no"
     loading="eager"
-    allow="clipboard-write"
+    allow="clipboard-write; web-share"
     referrerpolicy="strict-origin-when-cross-origin"
   ></iframe>
 </div>
@@ -118,6 +125,132 @@ and any previous iframe auto-resize scripts.
     window.visualViewport.addEventListener('scroll',queueViewport,{passive:true});
     window.visualViewport.addEventListener('resize',queueViewport,{passive:true});
   }
+  // When Google's nested HTMLService iframe cannot invoke Web Share itself,
+  // share the IMAGE FILE from this first-party website instead. It receives
+  // the file only after the registrant taps the share button.
+  var gsaaShareDialog = null;
+  var gsaaShareObjectUrl = null;
+  var gsaaShareFile = null;
+  var gsaaShareText = '';
+  var gsaaShareLang = 'hi';
+  var gsaaShareSource = null;
+  var gsaaShareSourceOrigin = '';
+  function gsaaAckShare(result){
+    if(!gsaaShareSource) return;
+    try {gsaaShareSource.postMessage({type:'GSAA_CHENNAI_SHARE_ACK',result:result},gsaaShareSourceOrigin);}catch(e){}
+  }
+  function gsaaShareLabels(){
+    var lang=gsaaShareLang;
+    var labels={
+      hi:{title:'प्रमाणपत्र की फोटो शेयर करें',desc:'आपका प्रमाणपत्र तैयार है। नीचे बटन दबाकर WhatsApp चुनें। फोटो के साथ संदेश भी भेजने का प्रयास होगा।',share:'फोटो + संदेश शेयर करें',download:'सर्टिफिकेट फोटो डाउनलोड करें',text:'WhatsApp पर केवल संदेश भेजें',close:'बंद करें',unsupported:'इस ब्राउज़र में सीधे इमेज शेयर नहीं हो पा रही है। फोटो डाउनलोड करके WhatsApp में भेजें।'},
+      en:{title:'Share certificate photo',desc:'Your certificate is ready. Tap the button below and choose WhatsApp. The image and message will be shared where supported.',share:'Share photo + message',download:'Download certificate photo',text:'Send text via WhatsApp',close:'Close',unsupported:'Direct photo sharing is unavailable in this browser. Download the photo and send it using WhatsApp.'},
+      ta:{title:'சான்றிதழ் படத்தைப் பகிருங்கள்',desc:'உங்கள் சான்றிதழ் தயார். கீழே உள்ள பொத்தானைத் தட்டி WhatsApp-ஐத் தேர்ந்தெடுக்கவும். ஆதரவு இருந்தால் படமும் செய்தியும் ஒன்றாகப் பகிரப்படும்.',share:'படம் + செய்தி பகிரவும்',download:'சான்றிதழ் படம் பதிவிறக்கவும்',text:'WhatsApp செய்தி மட்டும்',close:'மூடு',unsupported:'இந்த உலாவியில் படத்தை நேரடியாகப் பகிர முடியவில்லை. படத்தைப் பதிவிறக்கி WhatsApp-ல் அனுப்பவும்.'}
+    };
+    return labels[lang] || labels.hi;
+  }
+  function gsaaRemoveDialog(){
+    if(gsaaShareDialog){gsaaShareDialog.remove();gsaaShareDialog=null;}
+    if(gsaaShareObjectUrl){URL.revokeObjectURL(gsaaShareObjectUrl);gsaaShareObjectUrl=null;}
+  }
+  function gsaaParentNativeShare(){
+    if(!gsaaShareFile || !navigator.share || !navigator.canShare || !navigator.canShare({files:[gsaaShareFile]})) {
+      gsaaShowShareDialog(true); return;
+    }
+    var shareOperation;
+    try {
+      // Called directly in a click or in the just-received original user gesture.
+      shareOperation = navigator.share({
+        title:'Gau Samman Aahvaan Abhiyan',
+        files:[gsaaShareFile],text:gsaaShareText
+      });
+    } catch(err) {gsaaShowShareDialog(true);return;}
+    Promise.resolve(shareOperation).then(function(){
+      gsaaRemoveDialog(); gsaaAckShare('shared');
+    }).catch(function(err){
+      if(err && err.name==='AbortError') {
+        gsaaAckShare('cancelled');
+      } else {
+        gsaaShowShareDialog(true);
+      }
+    });
+  }
+  function gsaaShowShareDialog(showFallback){
+    gsaaRemoveDialog();
+    var l=gsaaShareLabels();
+    var shareAvailable=!!(navigator.share && navigator.canShare && navigator.canShare({files:[gsaaShareFile]}));
+    var wrapper=document.createElement('div');
+    wrapper.id='gsaa-first-party-share-dialog';
+    wrapper.setAttribute('role','dialog');
+    wrapper.setAttribute('aria-modal','true');
+    wrapper.setAttribute('aria-label',l.title);
+    wrapper.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(39,26,20,.77);display:flex;justify-content:center;align-items:center;padding:16px;box-sizing:border-box;';
+    var card=document.createElement('div');
+    card.style.cssText='box-sizing:border-box;width:min(460px,100%);max-height:90dvh;overflow-y:auto;background:#fff9eb;border:2px solid #ebc183;border-radius:24px;padding:20px;box-shadow:0 24px 75px #1d130f8a;font:500 15px/1.55 system-ui,sans-serif;color:#633b29;text-align:center;';
+    var heading=document.createElement('h2');
+    heading.textContent=l.title;
+    heading.style.cssText='font-size:22px;color:#7d2e26;margin:2px 0 8px;';
+    var desc=document.createElement('p');
+    desc.textContent=(!shareAvailable || showFallback) ? l.unsupported : l.desc;
+    desc.style.cssText='font-size:13px;margin:5px 0 14px;';
+    var image=document.createElement('img');
+    gsaaShareObjectUrl=URL.createObjectURL(gsaaShareFile);
+    image.src=gsaaShareObjectUrl;
+    image.alt=l.title;
+    image.style.cssText='display:block;width:100%;height:auto;max-height:30vh;object-fit:contain;border-radius:12px;border:1px solid #e3c89e;background:white;margin:0 0 12px;';
+    function action(label,color){
+      var b=document.createElement('button');
+      b.type='button';b.textContent=label;
+      b.style.cssText='width:100%;box-sizing:border-box;border:1px solid #d9bc93;border-radius:12px;background:'+color+';color:'+(color==='#168a53'?'white':'#6a3c2b')+';min-height:45px;margin:6px 0;padding:9px 12px;font:700 14px system-ui,sans-serif;cursor:pointer;';
+      return b;
+    }
+    card.append(heading,desc,image);
+    if(shareAvailable){
+      var nativeButton=action(l.share,'#168a53');
+      nativeButton.addEventListener('click',gsaaParentNativeShare);
+      card.appendChild(nativeButton);
+    }
+    var download=document.createElement('a');
+    download.href=gsaaShareObjectUrl;
+    download.download=gsaaShareFile.name || 'Gau-Samman-Certificate.jpg';
+    download.textContent='⬇ '+l.download;
+    download.style.cssText='display:block;text-decoration:none;color:#723820;background:#fff;border:1px solid #dabf94;border-radius:12px;padding:11px;margin:6px 0;font:700 13px system-ui,sans-serif;';
+    card.appendChild(download);
+    var textLink=document.createElement('a');
+    textLink.href='https://api.whatsapp.com/send?text='+encodeURIComponent(gsaaShareText);
+    textLink.target='_blank';textLink.rel='noopener noreferrer';
+    textLink.textContent=l.text;
+    textLink.style.cssText='display:block;text-decoration:none;color:#176947;background:#fff;border:1px solid #d7c197;border-radius:12px;padding:10px;margin:6px 0;font:700 13px system-ui,sans-serif;';
+    card.appendChild(textLink);
+    var closeButton=action(l.close,'#fff6e6');
+    closeButton.addEventListener('click',function(){gsaaRemoveDialog();gsaaAckShare('cancelled');});
+    card.appendChild(closeButton);
+    wrapper.appendChild(card);
+    document.body.appendChild(wrapper);
+    gsaaShareDialog=wrapper;
+    gsaaAckShare('fallback');
+  }
+  window.addEventListener('message',function(ev){
+    if(!isTrusted(ev))return;
+    var d=ev.data;
+    if(!d || d.type!=='GSAA_CHENNAI_SHARE_CERTIFICATE')return;
+    if(childWindow && ev.source!==childWindow)return;
+    var f=d.file;
+    if(!(f instanceof File) || !/^image\/(jpeg|png|webp)$/.test(f.type) || f.size<=0 || f.size>9000000)return;
+    gsaaShareSource=ev.source;
+    gsaaShareSourceOrigin=ev.origin;
+    gsaaShareFile=f;
+    gsaaShareText=String(d.text||'').slice(0,12000);
+    gsaaShareLang=['hi','en','ta'].includes(d.language)?d.language:'hi';
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[f]}) &&
+       (!navigator.userActivation || navigator.userActivation.isActive)) {
+      gsaaParentNativeShare();
+    } else {
+      // A SECOND explicit tap in the parent is required when the gesture isn't
+      // forwarded by the browser; never pretend an image was shared when it wasn't.
+      gsaaShowShareDialog(false);
+    }
+  });
+
   queueViewport();
 })();
 </script>
