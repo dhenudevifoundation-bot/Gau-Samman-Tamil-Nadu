@@ -1,0 +1,123 @@
+<!--
+GAU SAMMAN AAHVAAN ABHIYAN — ONE-SCROLL RESPONSIVE EMBED
+Place in your /tamilnadu page's Custom HTML area, replacing the OLD embed fully.
+The Apps Script Index.html must be updated to the accompanying file, too.
+Remove old container cards, duplicate site headings, page-builder overflow:auto
+and any previous iframe auto-resize scripts.
+-->
+<script>
+(function(){
+  var vp=document.querySelector('meta[name="viewport"]');
+  if(!vp){vp=document.createElement('meta');vp.name='viewport';document.head.appendChild(vp);}
+  vp.content='width=device-width, initial-scale=1, viewport-fit=cover';
+})();
+</script>
+<style>
+#gsaa-chennai-mobile-shell{
+  display:block!important;position:relative!important;box-sizing:border-box!important;
+  left:50%!important;transform:translateX(-50%)!important;
+  width:100vw!important;max-width:100vw!important;min-width:0!important;
+  margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
+  box-shadow:none!important;background:#fffbf3!important;
+  overflow:visible!important;
+}
+#gsaa-chennai-mobile-frame{
+  display:block!important;position:static!important;box-sizing:border-box!important;
+  width:100%!important;max-width:100%!important;min-width:0!important;
+  /* Start as ONE mobile viewport: until language selection is completed. */
+  height:100vh;height:100dvh;min-height:0!important;max-height:none!important;
+  margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
+  box-shadow:none!important;background:#fffbf3!important;
+  transform:none!important;zoom:1!important;vertical-align:top!important;
+  overflow:hidden!important;
+}
+@supports(width:100dvw){#gsaa-chennai-mobile-shell{width:100dvw!important;max-width:100dvw!important}}
+</style>
+<div id="gsaa-chennai-mobile-shell">
+  <iframe
+    id="gsaa-chennai-mobile-frame"
+    title="गौ सम्मान आह्वान अभियान — चेन्नई पंजीकरण"
+    src="https://gausamman-tamilnadu.cloud/"
+    width="100%"
+    scrolling="no"
+    loading="eager"
+    allow="clipboard-write"
+    referrerpolicy="strict-origin-when-cross-origin"
+  ></iframe>
+</div>
+<script>
+(function(){
+  'use strict';
+  var iframe=document.getElementById('gsaa-chennai-mobile-frame');
+  if(!iframe) return;
+  // HtmlService may be nested: the message source is often the *inner*
+  // googleusercontent frame, not the script.google.com iframe WindowProxy.
+  var googleOrigin=/^https:\/\/(?:script\.google\.com|(?:[a-z0-9-]+\.)*googleusercontent\.com)$/i;
+  var childWindow=null, childOrigin=null, lastHeight=0, queued=false;
+
+  function isTrusted(ev){return googleOrigin.test(ev.origin||'') && !!ev.source;}
+  function visibleViewport(){
+    queued=false;
+    if(!childWindow) return;
+    var rect=iframe.getBoundingClientRect();
+    var visual=window.visualViewport;
+    var viewportTop=visual ? visual.offsetTop : 0;
+    var viewportHeight=visual ? visual.height : window.innerHeight;
+    var from=Math.max(0,viewportTop-rect.top);
+    var to=Math.min(rect.height,viewportTop+viewportHeight-rect.top);
+    var amount=to-from;
+    if(amount<100) return;
+    try{
+      childWindow.postMessage({
+        type:'GSAA_EMBED_VISIBLE_VIEWPORT',
+        top:Math.round(from),
+        height:Math.round(Math.min(1600,amount))
+      },childOrigin);
+    }catch(e){}
+  }
+  function queueViewport(){
+    if(queued) return;
+    queued=true;
+    requestAnimationFrame(visibleViewport);
+  }
+  window.addEventListener('message',function(ev){
+    if(!isTrusted(ev))return;
+    var data=ev.data;
+    if(!data || (data.type!=='GSAA_CHENNAI_READY' && data.type!=='GSAA_CHENNAI_HEIGHT' && data.type!=='GSAA_EMBED_SCROLL_TO'))return;
+    // Register the real child window from a trusted Google origin.
+    // This works both directly and through Google's extra HTML-service iframe.
+    if(childWindow && childWindow!==ev.source)return;
+    childWindow=ev.source;
+    childOrigin=ev.origin;
+    if(data.type==='GSAA_CHENNAI_READY'){
+      queueViewport();
+      return;
+    }
+    if(data.type==='GSAA_EMBED_SCROLL_TO'){
+      var offset=Number(data.top);
+      if(Number.isFinite(offset) && offset>=0 && offset<25000){
+        var pageY=window.scrollY+iframe.getBoundingClientRect().top+offset-12;
+        window.scrollTo({top:Math.max(0,Math.round(pageY)),behavior:data.behavior==='instant'?'instant':'smooth'});
+      }
+      return;
+    }
+    var h=Number(data.height);
+    if(!Number.isFinite(h)||h<300||h>25000)return;
+    h=Math.ceil(h);
+    if(Math.abs(h-lastHeight)>=2){
+      lastHeight=h;
+      // Absolute CONTENT height. Never use current iframe/client scrollHeight.
+      iframe.style.setProperty('height',h+'px','important');
+    }
+    queueViewport();
+  });
+  iframe.addEventListener('load',queueViewport);
+  window.addEventListener('scroll',queueViewport,{passive:true});
+  window.addEventListener('resize',queueViewport,{passive:true});
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('scroll',queueViewport,{passive:true});
+    window.visualViewport.addEventListener('resize',queueViewport,{passive:true});
+  }
+  queueViewport();
+})();
+</script>
